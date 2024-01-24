@@ -30,23 +30,39 @@ const User = mongoose.model("User", {
 
 const SECRET_KEY = process.env.SECRET_KEY;
 const SALT_ROUNDS = 10;
-console.log("SECRET_KEY");
+
+// Define verifyToken middleware
+function verifyToken(req, res, next) {
+  const token = req.header("Authorization");
+
+  if (!token) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized: Token not provided" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    console.error(error);
+    return res.status(401).json({ message: "Unauthorized: Invalid token" });
+  }
+}
 
 // Register user
 app.post("/api/register", async (req, res) => {
   try {
     const { fullName, role, phone, email, password } = req.body;
 
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Save user to the database
     const newUser = new User({
       fullName,
       role,
@@ -56,7 +72,6 @@ app.post("/api/register", async (req, res) => {
     });
     await newUser.save();
 
-    //  JWT token
     const token = jwt.sign(
       { email: newUser.email, role: newUser.role },
       SECRET_KEY
@@ -76,9 +91,7 @@ app.post("/api/login", async (req, res) => {
 
     const user = await User.findOne({ email });
 
-    // Check if user exists and password is correct
     if (user && (await bcrypt.compare(password, user.password))) {
-      // Generate JWT token
       const token = jwt.sign(
         { email: user.email, role: user.role },
         SECRET_KEY
@@ -94,7 +107,17 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+// Fetch data from MongoDB
+app.get("/houselist", verifyToken, async (req, res) => {
+  try {
+    const houses = await User.find();
+    res.status(200).json({ houses });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
